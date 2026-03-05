@@ -1,3 +1,13 @@
+## v11.0.0
+- **SECURITY**: Fixed prototype pollution vulnerability via multipart field names (`__proto__[key]`). The form-data result object is now created with `Object.create(null)` (`src/classes/FormReader.ts`)
+- **SECURITY**: Fixed `HasMimeType` `strictSource` parameter being silently ignored — the constraint was never passed through to the validator (`src/decorators/validation/has-mime-type.validator.ts`)
+- **FIX**: Fixed unhandled stream errors in `MemoryStoredFile` that could cause requests to hang indefinitely on client disconnect (`src/classes/storage/MemoryStoredFile.ts`)
+- **FIX**: Fixed unhandled input stream errors in `FileSystemStoredFile` that could leave partial files on disk (`src/classes/storage/FileSystemStoredFile.ts`)
+- **FIX**: Fixed `TypeError` crash when busboy emits events before `handle()` is called — `handlePromiseResolve`/`handlePromiseReject` are now initialized with no-ops (`src/classes/FormReader.ts`)
+- **FIX**: Fixed `TypeError` crash in busboy limit event handlers when `config.limits` is undefined — added optional chaining (`src/classes/FormReader.ts`)
+- **FIX**: Fixed orphaned files left on disk when `fileSize` limit triggers truncation — truncated files are now deleted immediately (`src/classes/FormReader.ts`)
+- Major version now aligns with the supported NestJS major version
+
 ## v1.9.93
 - Merged PR [Add support for nestjs 11](https://github.com/dmitriy-nz/nestjs-form-data/pull/66)
 - Added "engines" section and `.nvmrc` file

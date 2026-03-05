@@ -12,7 +12,7 @@ export function HasMimeType(allowedMimeTypes: AllowedMimeTypes | AllowedMimeType
 
   return ValidateBy({
     name: 'HasMimeType',
-    constraints: [allowedMimeTypes],
+    constraints: [allowedMimeTypes, strictSource],
     validator: {
 
       validate(value: StoredFile, args: ValidationArguments) {

@@ -10,10 +10,10 @@ export class FormReader {
   protected busboy: any;
   protected fileStorePromises: Promise<void>[] = [];
 
-  protected result: any = {};
+  protected result: any = Object.create(null);
 
-  private handlePromiseResolve: Function;
-  private handlePromiseReject: Function;
+  private handlePromiseResolve: Function = () => {};
+  private handlePromiseReject: Function = () => {};
 
   private files: StoredFile[] = [];
 
@@ -30,10 +30,10 @@ export class FormReader {
 
     this.busboy.on('error', this.rejectWithError.bind(this));
 
-    this.busboy.on('partsLimit', () => this.rejectWithBadRequest(`Maximum number of parts is ${config.limits.parts}`));
-    this.busboy.on('filesLimit', () => this.rejectWithBadRequest(`Maximum number of files is ${config.limits.files}`));
-    this.busboy.on('fieldsLimit', () => this.rejectWithBadRequest(`Maximum number of fields is ${config.limits.fields}`));
-    this.busboy.on('fileSize', () => this.rejectWithBadRequest(`Maximum file size is ${config.limits.fileSize}`));
+    this.busboy.on('partsLimit', () => this.rejectWithBadRequest(`Maximum number of parts is ${config.limits?.parts}`));
+    this.busboy.on('filesLimit', () => this.rejectWithBadRequest(`Maximum number of files is ${config.limits?.files}`));
+    this.busboy.on('fieldsLimit', () => this.rejectWithBadRequest(`Maximum number of fields is ${config.limits?.fields}`));
+    this.busboy.on('fileSize', () => this.rejectWithBadRequest(`Maximum file size is ${config.limits?.fileSize}`));
     this.busboy.on('finish', this.proceedFinish.bind(this));
   }
 
@@ -64,6 +64,7 @@ export class FormReader {
     const readFilePromise: Promise<void> = this.loadFile(filename, encoding, mimeType, fileStream)
       .then(f => {
         if ((fileStream as any).truncated) {
+          f.delete().catch(() => {});
           this.busboy.emit('fileSize');
         } else {
           this.files.push(f);

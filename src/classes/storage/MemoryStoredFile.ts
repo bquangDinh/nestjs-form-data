@@ -12,6 +12,7 @@ export class MemoryStoredFile extends StoredFile {
 
   static create(busboyFileMeta: ParticleStoredFile, stream: ReadableStream, config: FormDataInterceptorConfig): Promise<MemoryStoredFile> {
     return new Promise<MemoryStoredFile>((res, rej) => {
+      stream.on('error', rej);
       stream.pipe(concat({ encoding: 'buffer' }, (buffer: Buffer) => {
 
         const file: MemoryStoredFile = plainToClass(MemoryStoredFile, {

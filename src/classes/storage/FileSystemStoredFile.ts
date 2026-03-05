@@ -20,6 +20,7 @@ export class FileSystemStoredFile extends StoredFile {
       const outStream = fs.createWriteStream(filePath);
       let size: number = 0;
       stream.on('data', (chunk) => size += chunk.length);
+      stream.on('error', rej);
       outStream.on('error', rej);
       outStream.on('finish', () => {
         const file: FileSystemStoredFile = plainToClass(FileSystemStoredFile, {
