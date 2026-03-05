@@ -5,5 +5,6 @@ export const DEFAULT_CONFIG: FormDataInterceptorConfig = {
   storage: MemoryStoredFile,
   cleanupAfterSuccessHandle: true,
   cleanupAfterFailedHandle: true,
+  awaitCleanup: true,
   fileSystemStoragePath: '/tmp/nestjs-tmp-storage',
 };

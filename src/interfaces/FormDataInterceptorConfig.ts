@@ -30,6 +30,14 @@ export interface FormDataInterceptorConfig {
   cleanupAfterFailedHandle?: boolean;
 
 
+  /**
+   * If true, the response will wait for file cleanup to complete before being sent.
+   * If false, cleanup runs in the background (fire-and-forget) for faster response times.
+   * @type {boolean}
+   * @default true
+   */
+  awaitCleanup?: boolean;
+
   limits?: FormDataInterceptorLimitsConfig;
   /**
    * If you want the module to be available globally

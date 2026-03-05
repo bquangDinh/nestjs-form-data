@@ -1,3 +1,7 @@
+## v11.0.1
+- **FIX**: Fixed race condition where file cleanup was not awaited before sending response — `deleteFiles()` is now properly awaited in both success and error paths (`src/interceptors/FormData.interceptor.ts`)
+- **FEATURE**: Added `awaitCleanup` configuration option (default: `true`). When `true`, the response waits for file cleanup to complete. Set to `false` for fire-and-forget cleanup and faster response times.
+
 ## v11.0.0
 - **SECURITY**: Fixed prototype pollution vulnerability via multipart field names (`__proto__[key]`). The form-data result object is now created with `Object.create(null)` (`src/classes/FormReader.ts`)
 - **SECURITY**: Fixed `HasMimeType` `strictSource` parameter being silently ignored — the constraint was never passed through to the validator (`src/decorators/validation/has-mime-type.validator.ts`)

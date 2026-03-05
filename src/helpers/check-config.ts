@@ -16,6 +16,10 @@ export function checkConfig(config: FormDataInterceptorConfig, defaults: FormDat
     config.cleanupAfterFailedHandle = defaults.cleanupAfterFailedHandle;
   }
 
+  if(config.awaitCleanup === undefined){
+    config.awaitCleanup = defaults.awaitCleanup;
+  }
+
   if (!config.fileSystemStoragePath)
     config.fileSystemStoragePath = defaults.fileSystemStoragePath;
 

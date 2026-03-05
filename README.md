@@ -1,160 +1,222 @@
 [![npm version](https://badge.fury.io/js/nestjs-form-data.svg)](https://badge.fury.io/js/nestjs-form-data)
+[![CI](https://github.com/dmitriy-nz/nestjs-form-data/actions/workflows/ci.yml/badge.svg)](https://github.com/dmitriy-nz/nestjs-form-data/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://img.shields.io/badge/License-MIT-green.svg)
 
+# nestjs-form-data
 
+An **object-oriented** approach to handling `multipart/form-data` in [NestJS](https://github.com/nestjs/nest). Uploaded files become typed class instances with built-in validation, automatic cleanup, and pluggable storage — no manual stream wiring required.
 
+## Why nestjs-form-data?
 
-# 💭 Description
-nestjs-form-data is a [NestJS](https://github.com/nestjs/nest) middleware for handling multipart/form-data, which is primarily used for uploading files.
-- Process files and strings, serialize form-data to object
-- Process files in nested objects
-- Integration with [class-validator](https://github.com/typestack/class-validator), validate files with validator decorator
+NestJS ships with Multer-based file upload, but it works outside the DTO validation flow — you handle files through `@UploadedFile()` separately from `@Body()`, losing the single-source-of-truth that DTOs provide.
 
-nestjs-form-data serializes the form-data request into an object and places it in the body of the request. 
-The files in the request are transformed into objects.  
-**Standard file storage types:**
-- Memory storage
-- File system storage
+**nestjs-form-data** takes a different approach: files are **first-class properties on your DTO**. They arrive as typed objects (`MemoryStoredFile`, `FileSystemStoredFile`, or your own custom class), validated with the same decorators you already use for strings and numbers:
 
-[Changelog](CHANGELOG.md)
-
-## ⏳ Installation
-```sh
-# npm
-npm install nestjs-form-data
-# yarn
-yarn add nestjs-form-data
-```
-This module has `class-validator` and `class-transformer` as a **required** peed dependencies.  
-Read more about validation pipe in the [official docs page](https://docs.nestjs.com/techniques/validation#using-the-built-in-validationpipe).  
-Make sure that you already have these and enable global validation pipe:
-```sh
-# npm
-npm install class-validator class-transformer
-# yarn
-yarn add class-validator class-transformer
-```
-Register a global validation pipe in `main.ts` file inside `bootstrap` function:
 ```ts
-//main.ts
+export class CreatePostDto {
+  @IsString()
+  title: string;
+
+  @IsFile()
+  @MaxFileSize(5e6)
+  @HasMimeType(['image/jpeg', 'image/png'])
+  cover: MemoryStoredFile;
+}
+```
+
+No `@UploadedFile()`, no separate pipes, no manual cleanup. Just a DTO.
+
+### Key features
+
+- **Files as typed objects** — each uploaded file is an instance of a `StoredFile` class with properties like `size`, `mimeType`, `extension`, `originalName`, and a reliable `buffer` or `path`
+- **Declarative validation** — validate file size, MIME type, and extension with decorators, including support for arrays (`{ each: true }`)
+- **Reliable MIME detection** — uses [file-type](https://www.npmjs.com/package/file-type) to read the file's [magic number](https://en.wikipedia.org/wiki/Magic_number_(programming)#Magic_numbers_in_files), falling back to the content-type header only when needed
+- **Nested objects** — fields with bracket notation (`photos[0][name]`) are parsed into proper nested structures
+- **Pluggable storage** — choose `MemoryStoredFile` for speed, `FileSystemStoredFile` for large files, or extend `StoredFile` to write your own (S3, GCS, etc.)
+- **Automatic cleanup** — temporary files are deleted after the request completes (configurable per success/failure)
+- **Express and Fastify** support
+- **NestJS 7 – 11** compatible
+
+## Installation
+
+```sh
+npm install nestjs-form-data
+```
+
+This module requires `class-validator` and `class-transformer` as peer dependencies:
+
+```sh
+npm install class-validator class-transformer
+```
+
+Register a global validation pipe in `main.ts`:
+
+```ts
+import { ValidationPipe } from '@nestjs/common';
+
 app.useGlobalPipes(
   new ValidationPipe({
-    transform: true // Transform is recomended configuration for avoind issues with arrays of files transformations
-  })
+    transform: true, // recommended to avoid issues with file array transformations
+  }),
 );
 ```
 
-Add the module to your application
+Add the module to your application:
+
 ```ts
+import { NestjsFormDataModule } from 'nestjs-form-data';
+
 @Module({
-  imports: [
-    NestjsFormDataModule,
-  ],
+  imports: [NestjsFormDataModule],
 })
-export class AppModule {
-}
+export class AppModule {}
 ```
-# 🪄 Usage
-Apply `@FormDataRequest()` decorator to your controller method
+
+## Quick start
+
+Apply `@FormDataRequest()` to your controller method and define a DTO:
+
 ```ts
-@Controller()
-export class NestjsFormDataController {
+import { Controller, Post, Body } from '@nestjs/common';
+import { FormDataRequest, MemoryStoredFile, IsFile, MaxFileSize, HasMimeType } from 'nestjs-form-data';
 
-
-  @Post('load')
-  @FormDataRequest()
-  getHello(@Body() testDto: FormDataTestDto): void {
-    console.log(testDto);
-  }
-}
-```
-If you are using class-validator describe dto and specify validation rules
-```ts
-export class FormDataTestDto {
-
+class UploadAvatarDto {
   @IsFile()
   @MaxFileSize(1e6)
   @HasMimeType(['image/jpeg', 'image/png'])
   avatar: MemoryStoredFile;
-  
+}
+
+@Controller('users')
+export class UsersController {
+  @Post('avatar')
+  @FormDataRequest()
+  uploadAvatar(@Body() dto: UploadAvatarDto) {
+    // dto.avatar is a MemoryStoredFile instance
+    console.log(dto.avatar.originalName); // "photo.jpg"
+    console.log(dto.avatar.size);         // 94521
+    console.log(dto.avatar.mimeType);     // "image/jpeg"
+    console.log(dto.avatar.buffer);       // <Buffer ff d8 ff ...>
+  }
 }
 ```
+
+That's it. The file is parsed, validated, and available as a typed object on your DTO.
+
 ## Fastify
 
-Need to install [@fastify/multipart](https://www.npmjs.com/package/@fastify/multipart).
+Install [@fastify/multipart](https://www.npmjs.com/package/@fastify/multipart) and register it:
 
 ```ts
-// main.ts
 import { NestFactory } from '@nestjs/core';
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
-import multipart from '@fastify/multipart'
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import multipart from '@fastify/multipart';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule,
-    new FastifyAdapter()
-  );
-
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
   app.register(multipart);
-
   await app.listen(3000);
 }
-
 ```
 
+Everything else works the same — DTOs, decorators, and storage types are platform-agnostic.
+
+## File storage types
+
+### Memory storage
+
+```ts
+avatar: MemoryStoredFile;
+```
+
+The file is loaded entirely into RAM as a `Buffer`. Fast, but not suitable for large files.
+
+### File system storage
+
+```ts
+avatar: FileSystemStoredFile;
+```
+
+The file is written to a temporary directory on disk and available via `file.path` during request processing. Automatically deleted when the request completes.
+
+### Custom storage
+
+Extend the `StoredFile` abstract class to implement your own storage (e.g., stream directly to S3):
+
+```ts
+import { StoredFile } from 'nestjs-form-data';
+
+export class S3StoredFile extends StoredFile {
+  s3Key: string;
+  size: number;
+
+  static async create(meta, stream, config): Promise<S3StoredFile> {
+    // upload stream to S3, return instance
+  }
+
+  async delete(): Promise<void> {
+    // delete from S3
+  }
+}
+```
+
+Then use it: `@FormDataRequest({ storage: S3StoredFile })`
+
 ## Configuration
-### Static configuration 
-You can set the global configuration when connecting the module using the `NestjsFormDataModule.config` method:
+
+### Static
+
 ```ts
 @Module({
   imports: [
-    NestjsFormDataModule.config({ storage: MemoryStoredFile }),
+    NestjsFormDataModule.config({
+      storage: MemoryStoredFile,
+      isGlobal: true,
+      limits: {
+        fileSize: 5e6, // 5 MB
+        files: 10,
+      },
+    }),
   ],
-  controllers: [],
-  providers: [],
 })
-export class AppModule {
-}
+export class AppModule {}
 ```
-### Async configuration 
-Quite often you might want to asynchronously pass your module options instead of passing them beforehand. 
-In such case, use `configAsync()` method, that provides a couple of various ways to deal with async data.
 
-##### 1. Use factory
+### Async
+
 ```ts
 NestjsFormDataModule.configAsync({
-  useFactory: () => ({
-    storage: MemoryStoredFile
-  })
-});
-```
-Our factory behaves like every other one (might be async and is able to inject dependencies through inject).
-```ts
-NestjsFormDataModule.configAsync({
- imports: [ConfigModule],
-  useFactory: async (configService: ConfigService)  => ({
+  imports: [ConfigModule],
+  useFactory: async (configService: ConfigService) => ({
     storage: MemoryStoredFile,
     limits: {
-      files: configService.get<number>('files'),
-    }
+      files: configService.get<number>('MAX_FILES'),
+    },
   }),
- inject: [ConfigService],
+  inject: [ConfigService],
 });
 ```
-##### 2. Use class
+
+You can also use `useClass` or `useExisting` patterns — see [NestJS async providers](https://docs.nestjs.com/fundamentals/async-providers) for details:
+
 ```ts
+// useClass — creates a new instance
 NestjsFormDataModule.configAsync({
-  useClass: MyNestJsFormDataConfigService
+  useClass: MyFormDataConfigService,
+});
+
+// useExisting — reuses an imported provider
+NestjsFormDataModule.configAsync({
+  imports: [MyConfigModule],
+  useExisting: MyFormDataConfigService,
 });
 ```
-Above construction will instantiate `MyNestJsFormDataConfigService` inside `NestjsFormDataModule` and will leverage it 
-to create options object.
+
+Where the config service implements:
+
 ```ts
-export class MyNestJsFormDataConfigService implements NestjsFormDataConfigFactory {
-  configAsync(): Promise<FormDataInterceptorConfig> | FormDataInterceptorConfig {
+export class MyFormDataConfigService implements NestjsFormDataConfigFactory {
+  configAsync(): FormDataInterceptorConfig {
     return {
       storage: FileSystemStoredFile,
       fileSystemStoragePath: '/tmp/nestjs-fd',
@@ -162,171 +224,174 @@ export class MyNestJsFormDataConfigService implements NestjsFormDataConfigFactor
   }
 }
 ```
-##### 3. Use existing
-```ts
-NestjsFormDataModule.configAsync({
-  imports: [MyNestJsFormDataConfigModule],
-  useExisting: MyNestJsFormDataConfigService
-});
-```
-It works the same as useClass with one critical difference - `NestjsFormDataModule` will lookup imported modules to 
-reuse already created `MyNestJsFormDataConfigService`, instead of instantiating it on its own.
-### Method level configuration
-Or pass the config object while using the decorator on the method
-```ts
-@Controller()
-export class NestjsFormDataController {
 
+### Method-level override
 
-  @Post('load')
-  @FormDataRequest({storage: MemoryStoredFile})
-  getHello(@Body() testDto: FormDataTestDto): void {
-    console.log(testDto);
-  }
-}
-```
-### Configuration fields
-- `isGlobal` - If you want the module to be available globally. Once you import the module and configure it, it will be available globally
-- `storage` - The type of storage logic for the uploaded file  (Default MemoryStoredFile)
-- `fileSystemStoragePath` - The path to the directory for storing temporary files, used only for `storage: FileSystemStoredFile` (Default: /tmp/nestjs-tmp-storage)  
-- `cleanupAfterSuccessHandle` - If set to true, all processed and uploaded files will be deleted after successful processing by the final method. This means that the `delete` method will be called on all files (StoredFile)
-- `cleanupAfterFailedHandle` - If set to true, all processed and uploaded files will be deleted after unsuccessful processing by the final method. This means that the `delete` method will be called on all files (StoredFile)
-- `limits` - [busboy](https://www.npmjs.com/package/busboy#busboy-methods) limits configuration. Constraints in this declaration are handled at the serialization stage, so using these parameters is preferable for performance.
-## File storage types
-### Memory storage
-`MemoryStoredFile` The file is loaded into RAM, files with this storage type are very fast but not suitable for processing large files.
-### File system storage
-`FileSystemStoredFile` The file is loaded into a temporary directory (see configuration) and is available during the processing of the request. The file is automatically deleted after the request finishes
-### Custom storage types
-You can define a custom type of file storage, for this, inherit your class from `StoredFile`, see examples in the storage directory
-## Validation
-By default, several validators are available with which you can check the file  
-Note: If you need to validate an array of files for size or otherwise, use `each: true` property from `ValidationOptions`
+Override global config for a specific endpoint:
 
-### IsFile
-Checks if the value is an uploaded file
 ```ts
-@IsFile(validationOptions?: ValidationOptions)
+@Post('upload')
+@FormDataRequest({ storage: FileSystemStoredFile })
+upload(@Body() dto: UploadDto) {}
 ```
 
-### IsFiles
-Checks an array of files, the same as `@IsFile({ each: true })`  
-For convenience
+### Configuration options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `storage` | `Type<StoredFile>` | `MemoryStoredFile` | Storage class for uploaded files |
+| `isGlobal` | `boolean` | `false` | Make the module available to all submodules |
+| `fileSystemStoragePath` | `string` | `/tmp/nestjs-tmp-storage` | Temp directory for `FileSystemStoredFile` |
+| `cleanupAfterSuccessHandle` | `boolean` | `true` | Delete files after successful request |
+| `cleanupAfterFailedHandle` | `boolean` | `true` | Delete files after failed request |
+| `awaitCleanup` | `boolean` | `true` | Wait for file cleanup before sending response. Set to `false` for faster responses (cleanup runs in the background) |
+| `limits` | `object` | `{}` | [Busboy limits](https://www.npmjs.com/package/busboy#busboy-methods): `fileSize`, `files`, `fields`, `parts`, `headerPairs` |
+
+## Validation decorators
+
+All validators work with `{ each: true }` for arrays of files.
+
+### @IsFile / @IsFiles
+
+Checks if the value is an uploaded file (instance of `StoredFile`).
+
 ```ts
-@IsFiles(validationOptions?: ValidationOptions)
+@IsFile()
+avatar: MemoryStoredFile;
+
+@IsFiles()
+photos: MemoryStoredFile[];
 ```
 
-### MaxFileSize
-Maximum allowed file size
+### @MaxFileSize / @MinFileSize
+
+File size constraints in bytes.
+
 ```ts
-@MaxFileSize(maxSizeBytes: number, validationOptions?: ValidationOptions)
+@MaxFileSize(5e6)          // max 5 MB
+@MinFileSize(1024)         // min 1 KB
+avatar: MemoryStoredFile;
 ```
 
-### MinFileSize
-Minimum allowed file size
-```ts
-@MinFileSize(minSizeBytes: number, validationOptions?: ValidationOptions)
-```
+### @HasMimeType
 
-### HasMimeType
-Check the mime type of the file  
-The library uses two sources to get the mime type for the file:
-- [file-type](https://www.npmjs.com/package/file-type) library gets mime-type: gets the mime-type from the [magic number](https://en.wikipedia.org/wiki/Magic_number_(programming)#Magic_numbers_in_files) directly from the binary data, it is a reliable source because it checks the file itself but may not return values for some files
-- content type header from [busboy](https://www.npmjs.com/package/busboy: is a less trusted source because it can be tampered with  
-
-*Priority of receiving mime-type corresponds to the list*
-
-The default is simple mode, which does not check the data source, but you can pass a second argument to strictly check the mime-type and data source.  
-You can also get the mime type and data source via the `get mimeTypeWithSource():MetaFieldSource` getter on the `StoredFile`
-
+Validate MIME type. Supports exact strings, wildcard patterns, and regular expressions.
 
 ```ts
-type AllowedMimeTypes = Array<AllowedMimeType>
-type AllowedMimeType = string | RegExp;
+// exact match
+@HasMimeType(['image/jpeg', 'image/png'])
 
-@HasMimeType(allowedMimeTypes: AllowedMimeTypes | AllowedMimeType, strictSource?: MetaSource | ValidationOptions, validationOptions?: ValidationOptions)
-```
-
-You can also use partial matching, just pass the unimportant parameter as `*`, for example:
-```ts
+// wildcard — matches any image type
 @HasMimeType('image/*')
+
+// regex
+@HasMimeType([/image\/.*/])
 ```
-also as array:
-```ts
-@HasMimeType(['image/*', 'text/*'])
-```
 
-### HasExtension
-Check the extension type of the file
-The library uses two sources to get the extension for the file:
-- [file-type](https://www.npmjs.com/package/file-type) library gets mime-type: gets the extension from the [magic number](https://en.wikipedia.org/wiki/Magic_number_(programming)#Magic_numbers_in_files) directly from the binary data, it is a reliable source because it checks the file itself but may not return values for some files
-- value after the last dot in file name: is a less trusted source because it can be tampered with
+MIME type detection priority:
+1. **Magic number** (via [file-type](https://www.npmjs.com/package/file-type)) — reads binary data, reliable
+2. **Content-Type header** (via [busboy](https://www.npmjs.com/package/busboy)) — client-provided, can be spoofed
 
-*Priority of receiving extension corresponds to the list*  
-
-The default is simple mode, which does not check the data source, but you can pass a second argument to strictly check the extension and data source.  
-You can also get the extension and data source via the `get extensionWithSource():MetaFieldSource` getter on the `StoredFile`
+To enforce that the MIME type comes from a specific source:
 
 ```ts
-@HasExtension(allowedMimeTypes: string[] | string, strictSource?: MetaSource | ValidationOptions, validationOptions?: ValidationOptions)
+import { MetaSource } from 'nestjs-form-data';
+
+@HasMimeType(['image/jpeg'], MetaSource.bufferMagicNumber)  // only trust magic number
 ```
+
+Access the source at runtime via `file.mimeTypeWithSource`.
+
+### @HasExtension
+
+Validate file extension. Same source priority and strict mode as `@HasMimeType`.
+
+```ts
+@HasExtension(['jpg', 'png'])
+
+// strict — only trust extension from magic number detection
+@HasExtension(['jpg'], MetaSource.bufferMagicNumber)
+```
+
+Access the source at runtime via `file.extensionWithSource`.
 
 ## Examples
-### FileSystemStoredFile storage configuration
-Controller
+
+### Single file with FileSystemStoredFile
+
+Controller:
+
 ```ts
 import { FileSystemStoredFile, FormDataRequest } from 'nestjs-form-data';
 
 @Controller()
 export class NestjsFormDataController {
-
-
   @Post('load')
-  @FormDataRequest({storage: FileSystemStoredFile})
+  @FormDataRequest({ storage: FileSystemStoredFile })
   getHello(@Body() testDto: FormDataTestDto): void {
     console.log(testDto);
   }
 }
 ```
-DTO
+
+DTO:
+
 ```ts
 import { FileSystemStoredFile, HasMimeType, IsFile, MaxFileSize } from 'nestjs-form-data';
 
-
 export class FormDataTestDto {
-
   @IsFile()
   @MaxFileSize(1e6)
   @HasMimeType(['image/jpeg', 'image/png'])
   avatar: FileSystemStoredFile;
-
 }
 ```
 
-Send request (via Insomnia)  
+Send request (via Insomnia):
 
 ![image](https://user-images.githubusercontent.com/51157176/139556439-6b709fe8-8d62-41a2-9997-f9b7a2ff3d30.png)
 
+### Array of files
 
-### Validate the array of file
-
-DTO
+DTO:
 
 ```ts
 import { FileSystemStoredFile, HasMimeType, IsFiles, MaxFileSize } from 'nestjs-form-data';
 
 export class FormDataTestDto {
-
   @IsFiles()
   @MaxFileSize(1e6, { each: true })
   @HasMimeType(['image/jpeg', 'image/png'], { each: true })
   avatars: FileSystemStoredFile[];
-
 }
 ```
-Send request (via Insomnia)  
+
+Send request (via Insomnia):
 
 ![image](https://user-images.githubusercontent.com/51157176/139556545-a8a1232d-3f1d-4325-9eff-98c294736d88.png)
 
+### Mixed fields and files
+
+```ts
+export class CreateProductDto {
+  @IsString()
+  name: string;
+
+  @IsNumber()
+  @Type(() => Number)
+  price: number;
+
+  @IsFile()
+  @MaxFileSize(5e6)
+  @HasMimeType(['image/*'])
+  image: MemoryStoredFile;
+}
+```
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## License
+
 [MIT](LICENSE)
